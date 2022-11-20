@@ -1,0 +1,274 @@
+#!/bin/env bash
+: "
+docker run automation utility
+"
+
+# docker, dockerfile and docker-compose variables
+DOCKERFILE_PATH="$PWD"
+
+# Global Variables
+IMAGE_NAME="sqlite3"
+SERVICE_NAME="sqlite"
+CONTAINER_NAME="sqlite3"
+declare -A volumes=(
+    # [volume_name]="host-system-path:container-path:permission"
+    [database]="$PWD/db:/db:z"
+)
+
+setup()
+{
+    : "
+    Setup environment for docker usage
+    "
+    mkdir -p db
+}
+
+: "
+Docker operations
+"
+view()
+{
+    : "
+    View docker system information based on specified statistics
+    - Options
+        + ps : container process
+    "
+
+    # Initialize Variables
+    TARGET_STAT="${1:-ps}"
+    CMD=$(cat << EOF
+    ps : Current Container Processes
+EOF
+)
+
+    # Process target stat
+    case "$TARGET_STAT" in
+        "ps")
+            echo -e "List container processes"
+            # CMD="docker container ps | grep ${CONTAINER_NAME}"
+            CMD="docker container ps"
+            ;;
+        *)
+            echo -e "Invalid Stat Type"
+            ;;
+    esac
+    
+    # Execute command
+    $CMD && \
+        echo -e "Statistics successfully displayed." || \
+        echo -e "Error retrieving statistics"
+}
+
+build()
+{
+    : "
+    docker build the Dockerfile image
+    "
+    DOCKER_BUILD_FLAGS="${1:-"-t $IMAGE_NAME"}"
+    CMD="docker build ${DOCKERFILE_PATH} ${DOCKER_BUILD_FLAGS}"
+
+    $CMD && \
+        echo -e "Dockerfile built successfully" || \
+        echo -e "Error building Dockerfile"
+}
+
+run()
+{
+    : "
+    docker run/startup the container
+    "
+    DOCKER_RUN_FLAGS="-dit --name $CONTAINER_NAME"
+    CONTAINER_PARAMS="test.db" # commands to parse into and execute in container
+
+    # Mount all volumes
+    for vol_name in "${!volumes[@]}"; do
+        # -v ${volumes['database']}
+        vol_path="${volumes[$vol_name]}"
+        DOCKER_RUN_FLAGS+=" -v $vol_path "
+    done
+
+    # Define command to execute
+    CMD="docker run ${DOCKER_RUN_FLAGS} ${IMAGE_NAME} ${CONTAINER_PARAMS}"
+
+    # Execute command
+    $CMD && \
+        echo -e "Docker container created." || \
+        echo -e "Error creating docker container"
+}
+
+start()
+{
+    : "
+    Start the stopped container (similar to docker container start)
+    "
+    CMD="docker container start ${CONTAINER_NAME}"
+
+    # Execute command
+    $CMD && \
+        echo -e "Docker container started." || \
+        echo -e "Error starting Docker container"
+}
+
+stop()
+{
+    : "
+    Stop the running container (similar to docker container stop)
+    "
+    CMD="docker container stop ${CONTAINER_NAME}"
+
+    # Execute command
+    $CMD && \
+        echo -e "Docker container stopped." || \
+        echo -e "Error stopping Docker container"
+}
+
+remove()
+{
+    : "
+    Remove an existing container (similar to docker container rm)
+    "
+    CMD="docker container rm ${CONTAINER_NAME}"
+
+    # Execute command
+    $CMD && \
+        echo -e "Docker container removed." || \
+        echo -e "Error removing Docker container"
+}
+
+teardown()
+{
+    : "
+    Teardown the container (similar to docker container down)
+    "
+    CMD_STOP="docker container stop $CONTAINER_NAME"
+    CMD_REMOVE="docker container rm $CONTAINER_NAME"
+
+    # Execute command
+    $CMD_STOP && $CMD_REMOVE && \
+        echo -e "Docker container stopped and removed." || \
+        echo -e "Error stopping and removing Docker container"
+}
+
+exec_shell()
+{
+    : "
+    Execute shell commands into the docker container environment
+    "
+    SHELL_CMD="${1:-"/bin/bash"}"
+    EXEC_FLAGS="${2:-"-it"}"
+    TARGET_CONTAINER_NAME="${3:-$CONTAINER_NAME}"
+    CMD="docker exec ${EXEC_FLAGS} ${TARGET_CONTAINER_NAME} ${SHELL_CMD}" 
+
+    # Execute Command
+    $CMD && \
+        echo -e "Command executed in container." || \
+        echo -e "Error executing command in container"
+}
+
+: "
+Main Runner
+"
+main()
+{
+    argv=("$@")
+    argc="${#argv[@]}"
+
+    if [[ "$argc" -gt 0 ]]; then
+        while [[ "$1" != "" ]]; do
+            # While there are still arguments
+            case "$1" in
+                "-b" | "--build")
+                    # Build image from dockerfile
+                    if [[ "$2" != "" ]]; then
+                        BUILD_FLAGS="$2"
+                        shift 1
+                    fi
+                    build "$BUILD_FLAGS"
+                    shift 1
+                    ;;
+                "-d" | "--down")
+                    # Teardown a running container
+                    teardown
+                    shift 1
+                    ;;
+                "-e" | "--exec")
+                    # Execute a shell command in the container
+                    # exec_shell $SHELL_FLAGS $CONTAINER_NAME $SHELL_CMD
+
+                    # Append shell command to execute in container
+                    if [[ "$2" != "" ]]; then  
+                        SHELL_CMD="$2"
+                        shift 1
+                    else
+                        SHELL_CMD="/bin/bash"
+                    fi
+
+                    # Append execute flags
+                    if [[ "$3" != "" ]]; then
+                        SHELL_FLAGS="$3"
+                        shift 1
+                    else
+                        SHELL_FLAGS="-it"
+                    fi
+
+                   
+                    # CMD="exec_shell "$SHELL_CMD" "$SHELL_FLAGS" "$CONTAINER_NAME""
+                    # $CMD
+                    exec_shell "$SHELL_CMD" "$SHELL_FLAGS" "$CONTAINER_NAME"
+                    shift 1
+                    ;;
+                "-R" | "--remove")
+                    # Remove a stopped container
+                    remove
+                    shift 1
+                    ;;
+                "-r" | "--run")
+                    # Startup a container from an image
+                    run
+                    shift 1
+                    ;;
+                "-s" | "--start")
+                    # Start a stopped container
+                    start
+                    shift 1
+                    ;;
+                "-S" | "--stop")
+                    # Stop a running container
+                    stop
+                    shift 1
+                    ;;
+                "-u" | "--up")
+                    if [[ "$2" != "" ]]; then
+                        BUILD_FLAGS="$2"
+                        shift 1
+                    fi
+
+                    # Build image
+                    build "$BUILD_FLAGS"
+
+                    # Startup container
+                    run
+                    shift 1
+                    ;;
+                "-h" | "--help")
+                    echo -e "Help"
+                    shift 1
+                    ;;
+                "-p" | "--view-processes")
+                    view "ps"
+                    shift 1
+                    ;;
+                *)
+                    # Default/Invalid
+                    echo -e "Invalid"
+                    shift 1
+                    ;;
+            esac
+        done
+    fi
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    setup
+    main "$@"
+fi
